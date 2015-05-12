@@ -305,18 +305,19 @@ def identify(strokes, stroke):
     _,_,best_score,best_match = best_aligment(stroke, draw, pose)
     for i in 1+np.array(range(draw.get_len()-stroke.get_len()+1)):
         _,_,score,match = best_aligment(stroke, draw, i)
-        if score<best_score:
+        if match<best_match:
+        #if score<best_score:
             best_score = score
             best_match = match
             pose = i
 
-    return pose, best_score, best_match
+    #return pose, best_score, best_match
 
-    #print best_score
+    print best_score
 
-    #plt.plot(draw.x,draw.y,'bo')
-    #plt.plot(draw.x[pose:pose+stroke.len],draw.y[pose:pose+stroke.len],'rs')
-    #plt.show()
+    plt.plot(draw.x,draw.y,'bo')
+    plt.plot(draw.x[pose:pose+stroke.len],draw.y[pose:pose+stroke.len],'rs')
+    plt.show()
 
 def compare(strokes1, strokes2):
     score = 0
@@ -382,26 +383,32 @@ class MyPaintWidget(Widget):
 
             #lastStroke.normalize_wrt_x()
 
+            modelStrokes.append(lastStroke)
+
+            """
             if demo:
                 demoStrokes.append(lastStroke)
             else:
                 modelStrokes.append(lastStroke)
-                
+            """
+
             drawingCenters_x.append(center[0])
             drawingCenters_y.append(center[1])
             
             lastStroke = Stroke()
 
         if touch.is_double_tap:
-            print demo
+            #print demo
 
+            """
             if demo:
                 score = compare(demoStrokes,modelStrokes)
                 print score
+            """
 
             #print('Received demo')
 
-            #identify(modelStrokes[:-1], drawingStrokes[-1])
+            identify(modelStrokes[:-1], modelStrokes[-1])
 
 
             #x1, y1, score = best_aligment(modelStrokes[0],drawingStrokes[1])
@@ -409,10 +416,15 @@ class MyPaintWidget(Widget):
             #print '...'
             #print sum(score)
 
+            """
             if demo:
                 demoStrokes = []
                 modelStrokes = []
                 self.canvas.clear()
+            """
+
+            modelStrokes = []
+            self.canvas.clear()
 
             drawingCenters_x = []
             drawingCenters_y = []
