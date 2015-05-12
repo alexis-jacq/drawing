@@ -28,6 +28,8 @@ parser.add_argument('draw', action="store",
                 help='The draw to be learnt')
 
 class Stroke:
+    """ a stroke object is a collection of x coordinates and y coordinates that describes the points inside a 1-stroke shape """
+
     def __init__(self, x=None, y=None):
         self.x = []
         self.y = []
@@ -35,6 +37,8 @@ class Stroke:
             self.x = x
         if y:
             self.y = y
+
+        # self.len is the number of points in the stroke
         self.len = min(len(self.x),len(self.y))
 
     def get_x(self):
@@ -47,6 +51,8 @@ class Stroke:
         return self.len
 
     def append(self,x,y):
+        """ add the point (x,y) to the stroke """
+
         self.x.append(x)
         self.y.append(y)
         self.len+=1
@@ -82,7 +88,7 @@ class Stroke:
 
 
     def uniformize(self):
-        """make the distribution of points in the stroke uniform """
+        """make the distribution of points in the stroke equidistants """
 
         self.len = len(self.x)
 
@@ -124,16 +130,22 @@ class Stroke:
 
 
     def revert(self):
+        """ revert a stroke : [x1,x2,x3] --> [x3,x2,x1] """ 
+
         self.x = self.x[::-1]
         self.y = self.y[::-1]
         return self
 
     def get_center(self):
+        """ compute the gravity center of a stroke """
+
         x = np.array(self.x)
         y = np.array(self.y)
         return np.mean(x), np.mean(y)
 
     def normalize(self):
+        """ normalize the stroke """
+
         x_min = min(self.x)
         x_max = max(self.x)
         y_min = min(self.y)
@@ -153,6 +165,8 @@ class Stroke:
         self.y = y.tolist()
 
     def normalize_wrt_x(self):
+        """ normalize the stroke with respect to the x axis """
+
         x_min = min(self.x)
         x_max = max(self.x)
         y_min = min(self.y)
@@ -171,6 +185,8 @@ class Stroke:
 
 
 def concat(strokes):
+    """ concatenate all the strokes of a multistroke drawing """
+
     long_stroke = Stroke()
     for stroke in strokes:
         long_stroke.x += stroke.x
@@ -179,6 +195,8 @@ def concat(strokes):
     return long_stroke
 
 def group_normalize(strokes):
+    """ normilize a multistroke drawing """
+
     long_stroke = concat(strokes)
     x_min = min(long_stroke.x)
     x_max = max(long_stroke.x)
@@ -194,6 +212,8 @@ def group_normalize(strokes):
     return normalized_strokes
 
 def group_normalize_wrt_x(strokes):
+    """ normailize a multistroke drawing with respect to the x axis """
+
     long_stroke = concat(strokes)
     x_min = min(long_stroke.x)
     x_max = max(long_stroke.x)
@@ -210,7 +230,6 @@ def best_aligment(stroke1, stroke2, indice=None):
     """compare naive euclidian distance, smart euclidian distance 
        and smart euclidian distance after reverting one of the two strokes"""
 
- 
     if indice and indice<len(stroke2.x):
         stroke2 = Stroke(stroke2.x[indice:],stroke2.y[indice:])
 
@@ -281,6 +300,7 @@ def align(stroke1, stroke2):
 
     return x1, y1, d, new_d, m, new_m
 
+"""
 class Drawing:
 
     # strokes must be a collection of strokes never normalized
@@ -288,8 +308,11 @@ class Drawing:
     def __init__(self, strokes):
         self.strokes = strokes
         self.strokes = group_normalize_wrt_x(strokes)
+"""
 
 def identify(strokes, stroke):
+    """ look for the best matching postion of a stroke inside a concatenation of a multistroke drawing """
+
     draw = concat(strokes)
     draw_length,_ = draw.euclidian_length()
     stroke_length,_ = stroke.euclidian_length()
@@ -320,6 +343,8 @@ def identify(strokes, stroke):
     plt.show()
 
 def compare(strokes1, strokes2):
+    """ takes two multistrokes drawing, alignes them and then compute the euclidian distance """
+
     score = 0
     for stroke in strokes1:
         _,_,match = identify(strokes2,stroke)
@@ -394,7 +419,7 @@ class MyPaintWidget(Widget):
 
             drawingCenters_x.append(center[0])
             drawingCenters_y.append(center[1])
-            
+ 
             lastStroke = Stroke()
 
         if touch.is_double_tap:
@@ -408,6 +433,7 @@ class MyPaintWidget(Widget):
 
             #print('Received demo')
 
+            # look for the last drawed stroke inside the concatenation of the other ones :
             identify(modelStrokes[:-1], modelStrokes[-1])
 
 
