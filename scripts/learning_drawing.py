@@ -57,18 +57,24 @@ class Stroke:
         self.y.append(y)
         self.len+=1
 
+    def reset(self):
+        self.x = []
+        self.y = []
+        self.len = 0
+
     def downsampleShape(self, numDesiredPoints):
         """ change the length of a stroke with interpolation"""
 
-        t_current = np.linspace(0, 1, len(self.x))
-        t_desired = np.linspace(0, 1, numDesiredPoints)
+        if len(self.x)>2:
+            t_current = np.linspace(0, 1, len(self.x))
+            t_desired = np.linspace(0, 1, numDesiredPoints)
 
-        f = interpolate.interp1d(t_current, self.x, kind='linear')
-        self.x = f(t_desired).tolist()
-        f = interpolate.interp1d(t_current, self.y, kind='linear')
-        self.y = f(t_desired).tolist()
+            f = interpolate.interp1d(t_current, self.x, kind='linear')
+            self.x = f(t_desired).tolist()
+            f = interpolate.interp1d(t_current, self.y, kind='linear')
+            self.y = f(t_desired).tolist()
 
-        self.len = numDesiredPoints
+            self.len = numDesiredPoints
 
     def euclidian_length(self):
         """comput length of the shape """
@@ -132,9 +138,9 @@ class Stroke:
     def revert(self):
         """ revert a stroke : [x1,x2,x3] --> [x3,x2,x1] """ 
 
-        self.x = self.x[::-1]
-        self.y = self.y[::-1]
-        return self
+        x = self.x[::-1]
+        y = self.y[::-1]
+        return Stroke(x,y)
 
     def get_center(self):
         """ compute the gravity center of a stroke """
@@ -183,6 +189,39 @@ class Stroke:
         self.x = x.tolist()
         self.y = y.tolist()
 
+    def split_non_differentiable_points(self,treshold=1.5):
+        """ V --> \+/ """
+
+        #split_points = Stroke()
+        splited_strokes = []
+        current_stroke = Stroke()
+        if len(self.x)>3:
+            current_stroke.append(self.x[0],self.y[0])
+            for i in range(len(self.x)-3):
+                x1 = float(self.x[i])
+                x2 = float(self.x[i+1])
+                x3 = float(self.x[i+2])
+                y1 = float(self.y[i])
+                y2 = float(self.y[i+1])
+                y3 = float(self.y[i+2])
+                triangle_ratio = (np.sqrt((x1-x2)**2+(y1-y2)**2)+np.sqrt((x3-x2)**2+(y3-y2)**2))/(np.sqrt((x1-x3)**2+(y1-y3)**2)+0.0001)
+                current_stroke.append(x2,y2)
+                if triangle_ratio>treshold:
+                    splited_strokes.append(current_stroke)
+                    current_stroke = Stroke()
+            if current_stroke.get_x():
+                splited_strokes.append(current_stroke)
+
+            return splited_strokes
+        else:
+            return self
+
+
+def smart_split(strokes):
+    splited = []
+    for stroke in strokes:
+        splited += stroke.split_non_differentiable_points()
+    return splited
 
 def concat(strokes):
     """ concatenate all the strokes of a multistroke drawing """
@@ -193,6 +232,103 @@ def concat(strokes):
         long_stroke.y += stroke.y
         long_stroke.len += stroke.len
     return long_stroke
+
+def smart_concat(strokes):
+    """ if a stroke starts where another ends --> concat """
+
+    # compute the average of spaces between connected points
+    total_length = 0
+    for stroke in strokes:
+        length,_ = stroke.euclidian_length()
+        total_length += length
+    space = total_length/float(len(strokes)*7+0.00001)
+
+    i = 0
+    while len(strokes[i+1:])>0:
+        test = False
+        stroke = strokes[i]
+        indice = i
+        for stroke_i in strokes[i+1:]:
+
+            indice += 1
+            x11 = stroke.get_x()[-1]
+            x21 = stroke_i.get_x()[0]
+            y11 = stroke.get_y()[-1]
+            y21 = stroke_i.get_y()[0]
+            
+            x12 = stroke.get_x()[-2]
+            x22 = stroke_i.get_x()[1]
+            y12 = stroke.get_y()[-2]
+            y22 = stroke_i.get_y()[1]
+            dist = np.sqrt((x11-x21)**2 + (y11-y21)**2)
+
+            dx1 = x11-x12
+            dx2 = x21-x11
+            dx3 = x22-x21
+            dx = [dx1,dx2,dx3]
+            #print dx
+
+            dy1 = y11-y12
+            dy2 = y21-y11
+            dy3 = y22-y21
+            dy = [dy1,dy2,dy3]
+            #print dy
+
+            good_angle = False
+            """if dx1*dx3<0 and dy1*dy3<0:
+                good_angle = True"""
+
+            if max(dx)*min(dx)>-10 and max(dy)*min(dy)>-10:
+                good_angle = True
+
+            if dist<space and good_angle:
+                test = True
+                strokes[i] = concat([stroke,stroke_i])
+                strokes[indice:-1]=strokes[indice+1:]
+                strokes = strokes[:-1]
+                break
+        if not test:
+            i += 1
+
+    return strokes
+
+
+def smart_merging(strokes,threshold=0.07):
+    """ if we draw two times the same shape at the same place, forget the smaller one """
+
+    new_strokes = []
+    while len(strokes)>1:
+        test = True
+        indice = 0
+        for stroke in strokes[1:]:
+            indice += 1
+            score1 = identify([stroke],strokes[0])
+            score2 = identify([strokes[0]],stroke)
+            score = min(score1,score2)
+            length1,_ = stroke.euclidian_length()
+            length2,_ = strokes[0].euclidian_length()
+            score = score/(min(length1,length2)+0.0001)
+            if score<threshold:
+                test = False
+                break
+        if test: # that means the stroke has'nt any twin
+            copy = Stroke(strokes[0].get_x(),strokes[0].get_y())
+            new_strokes.append(copy)
+        else:
+            # we want to keep the bigger:
+            size1 = strokes[indice].euclidian_length()
+            size2 = strokes[0].euclidian_length()
+            if size2>size1:
+                strokes[indice] = strokes[0]
+ 
+        strokes = strokes[1:]
+
+    # add the last one (we deleted all his possible twins)
+    new_strokes.append(strokes[0])
+    return new_strokes
+
+
+
 
 def group_normalize(strokes):
     """ normilize a multistroke drawing """
@@ -228,7 +364,11 @@ def group_normalize_wrt_x(strokes):
 
 def best_aligment(stroke1, stroke2, indice=None):
     """compare naive euclidian distance, smart euclidian distance 
-       and smart euclidian distance after reverting one of the two strokes"""
+       and smart euclidian distance after reverting one of the two strokes
+       stroke1 and stroke2 must have the same size, otherwize we take the size of the smallest and cut the other"""
+
+    if min(len(stroke1.x),len(stroke2.x))==0:
+        return 0,0,0,0,0,0
 
     if indice and indice<len(stroke2.x):
         stroke2 = Stroke(stroke2.x[indice:],stroke2.y[indice:])
@@ -254,7 +394,7 @@ def best_aligment(stroke1, stroke2, indice=None):
         d2 = d1
         m2 = m1
 
-    return nx1,ny1,np.mean(d2),np.mean(m2)
+    return nx1,ny1,np.mean(d2),np.mean(m2),d2,m2
 
 def align(stroke1, stroke2):
     """aligne two strokes in order to compute 
@@ -310,37 +450,59 @@ class Drawing:
         self.strokes = group_normalize_wrt_x(strokes)
 """
 
-def identify(strokes, stroke):
+def identify(strokes, stroke, closest=True):
     """ look for the best matching postion of a stroke inside a concatenation of a multistroke drawing """
 
-    draw = concat(strokes)
-    draw_length,_ = draw.euclidian_length()
+    # better : 1) unifore stroke/stroke ~ relative distance, 2) concatenate
+
     stroke_length,_ = stroke.euclidian_length()
-
-    draw.uniformize()
     stroke.uniformize()
+    stroke_num_points = len(stroke.get_x())
 
-    numDesiredPoints = int(stroke.get_len()*float(draw_length)/float(stroke_length))
-    draw.downsampleShape(numDesiredPoints)
+    uniformized_strokes = []
+    for stroke_i in strokes:
+        stroke_i_length,_ = stroke_i.euclidian_length()
+        stroke_i.uniformize()
+        numDesiredPoints = int(stroke_num_points*float(stroke_i_length)/(float(stroke_length)+0.0001))
+        stroke_i.downsampleShape(numDesiredPoints)
+        uniformized_strokes.append(stroke_i)
+
+    draw = concat(uniformized_strokes)
     draw.len = len(draw.x)
 
     pose = 0
-    _,_,best_score,best_match = best_aligment(stroke, draw, pose)
-    for i in 1+np.array(range(draw.get_len()-stroke.get_len()+1)):
-        _,_,score,match = best_aligment(stroke, draw, i)
-        if match<best_match:
-        #if score<best_score:
-            best_score = score
-            best_match = match
-            pose = i
+    _,_,best_score,best_match,_,best_values = best_aligment(stroke, draw, pose)
 
-    #return pose, best_score, best_match
+    if closest:
+        for i in 1+np.array(range(draw.get_len()-stroke.get_len()+1)):
+            _,_,score,match,_,values = best_aligment(stroke, draw, i)
+            if score<best_score:
+                best_score = score
+                best_match = match
+                best_values = values
+                pose = i
+    else:
+        for i in 1+np.array(range(draw.get_len()-stroke.get_len()+1)):
+            _,_,score,match,_,values = best_aligment(stroke, draw, i)
+            if match<best_match:
+                best_score = score
+                best_match = match
+                best_values = values
+                pose = i
 
-    print best_score
+    #print best_score
 
-    plt.plot(draw.x,draw.y,'bo')
-    plt.plot(draw.x[pose:pose+stroke.len],draw.y[pose:pose+stroke.len],'rs')
-    plt.show()
+    split_points = draw.split_non_differentiable_points(1.5)
+
+    #plt.plot(draw.x,draw.y,'bo')
+    #plt.plot(draw.x[pose:pose+stroke.len],draw.y[pose:pose+stroke.len],'rs')
+    #plt.plot(split_points.x,split_points.y,'gs')
+    #plt.show()
+
+    if closest:
+        return best_score
+    else:
+        return best_match
 
 def compare(strokes1, strokes2):
     """ takes two multistrokes drawing, alignes them and then compute the euclidian distance """
@@ -434,8 +596,16 @@ class MyPaintWidget(Widget):
             #print('Received demo')
 
             # look for the last drawed stroke inside the concatenation of the other ones :
-            identify(modelStrokes[:-1], modelStrokes[-1])
+            #identify(modelStrokes[:-1], modelStrokes[-1])
 
+            modelStrokes = smart_split(modelStrokes)
+            modelStrokes = smart_merging(modelStrokes)
+            modelStrokes = smart_concat(modelStrokes)
+            #stroke = modelStrokes[0]
+            for stroke in modelStrokes:
+                plt.plot(stroke.get_x(),stroke.get_y(),c=np.random.rand(3,1))
+
+            plt.show()
 
             #x1, y1, score = best_aligment(modelStrokes[0],drawingStrokes[1])
 
